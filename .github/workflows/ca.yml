@@ -1,0 +1,54 @@
+name: conditional-access
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tenant: dev
+            client_id: ${{ vars.AAD_CLIENT_ID_DEV }}
+          - tenant: prod
+            client_id: ${{ vars.AAD_CLIENT_ID_PROD }}
+    uses: ./.github/workflows/_tenant.yml
+    with:
+      tenant: ${{ matrix.tenant }}
+      client_id: ${{ matrix.client_id }}
+    secrets: inherit
+
+  apply-dev:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/_tenant.yml
+    with:
+      tenant: dev
+      client_id: ${{ vars.AAD_CLIENT_ID_DEV }}
+      apply: true
+    secrets: inherit
+
+  approve-prod:
+    needs: apply-dev
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "Prod rollout approved"
+
+  apply-prod:
+    needs: approve-prod
+    uses: ./.github/workflows/_tenant.yml
+    with:
+      tenant: prod
+      client_id: ${{ vars.AAD_CLIENT_ID_PROD }}
+      apply: true
+    secrets: inherit
